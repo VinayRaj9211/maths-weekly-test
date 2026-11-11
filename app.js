@@ -1,11 +1,53 @@
 (() => {
   const TOTAL = 10;
+  const DRAFT_KEY = 'littleSteps.mathsTest.draft.v1';
+  const RECORDS_KEY = 'littleSteps.mathsTest.records.v1';
+  const NAME_KEY = 'littleSteps.mathsTest.studentName.v1';
   const $ = (id) => document.getElementById(id);
   const screens = { welcome: $('welcome'), topics: document.querySelector('.topics-section'), footer: document.querySelector('.page-footer'), test: $('test-view'), result: $('result-view') };
   let questions = [];
   let answers = [];
   let current = 0;
   let reviewed = false;
+  let currentSessionId = null;
+  let savedRecords = readStored(RECORDS_KEY, []);
+  let savedDraft = readStored(DRAFT_KEY, null);
+  $('student-name').value = localStorage.getItem(NAME_KEY) || '';
+
+  function readStored(key, fallback) {
+    try { const value = JSON.parse(localStorage.getItem(key)); return value ?? fallback; }
+    catch { return fallback; }
+  }
+
+  function saveDraft() {
+    if (!questions.length || !currentSessionId) return;
+    const draft = { id: currentSessionId, questions, answers, current, studentName: $('student-name').value.trim(), updatedAt: new Date().toISOString() };
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draft)); savedDraft = draft; }
+    catch { $('save-note').textContent = 'This browser could not save your progress. Try freeing some storage space.'; }
+  }
+
+  function renderSavedTests() {
+    const section = $('records-section');
+    const list = $('records-list');
+    list.innerHTML = '';
+    section.classList.toggle('hidden', !savedRecords.length);
+    $('records-count').textContent = savedRecords.length ? `${savedRecords.length} saved` : '';
+    savedRecords.slice(0, 10).forEach((record) => {
+      const card = document.createElement('article'); card.className = 'record-card';
+      const details = document.createElement('div'); details.className = 'record-details';
+      const score = document.createElement('strong'); score.textContent = `${record.studentName || 'Student'} · ${record.score}/${record.total} correct`;
+      const date = document.createElement('span'); date.textContent = new Date(record.completedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+      const review = document.createElement('button'); review.className = 'record-review'; review.textContent = 'View answers'; review.type = 'button'; review.addEventListener('click', () => openSavedRecord(record.id));
+      details.append(score, date); card.append(details, review); list.append(card);
+    });
+  }
+
+  function updateWelcome() {
+    savedDraft = readStored(DRAFT_KEY, null);
+    $('resume-button').classList.toggle('hidden', !savedDraft || !Array.isArray(savedDraft.questions) || !savedDraft.questions.length);
+    if (savedDraft) $('save-note').textContent = 'Your unfinished test is saved on this device.';
+    renderSavedTests();
+  }
 
   const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
   const pick = (items) => items[rand(0, items.length - 1)];
@@ -70,10 +112,24 @@
     screens.footer.classList.toggle('hidden', name !== 'welcome');
     screens.test.classList.toggle('hidden', name !== 'test');
     screens.result.classList.toggle('hidden', name !== 'result');
+    if (name === 'welcome') updateWelcome();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  function startTest() { questions = buildTest(); answers = Array(TOTAL).fill(null); current = 0; reviewed = false; renderQuestion(); showScreen('test'); }
+  function startTest() {
+    const name = $('student-name').value.trim();
+    localStorage.setItem(NAME_KEY, name);
+    questions = buildTest(); answers = Array(TOTAL).fill(null); current = 0; reviewed = false; currentSessionId = `test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    renderQuestion(); showScreen('test');
+  }
+
+  function resumeTest() {
+    const draft = readStored(DRAFT_KEY, null);
+    if (!draft || !Array.isArray(draft.questions) || draft.questions.length !== TOTAL) { updateWelcome(); return; }
+    questions = draft.questions; answers = Array.isArray(draft.answers) ? draft.answers : Array(TOTAL).fill(null); current = Math.max(0, Math.min(TOTAL - 1, Number(draft.current) || 0));
+    currentSessionId = draft.id; reviewed = false; $('student-name').value = draft.studentName || $('student-name').value;
+    renderQuestion(); showScreen('test');
+  }
 
   function renderQuestion() {
     const q = questions[current];
@@ -87,26 +143,43 @@
       q.options.forEach((option, i) => {
         const label = document.createElement('label'); label.className = 'answer-option' + (answers[current] === option ? ' selected' : '');
         const input = document.createElement('input'); input.type = 'radio'; input.name = 'answer'; input.value = option; input.checked = answers[current] === option;
-        input.addEventListener('change', () => { answers[current] = option; area.querySelectorAll('.answer-option').forEach((el) => el.classList.remove('selected')); label.classList.add('selected'); });
+        input.addEventListener('change', () => { answers[current] = option; area.querySelectorAll('.answer-option').forEach((el) => el.classList.remove('selected')); label.classList.add('selected'); saveDraft(); });
         label.append(input, document.createTextNode(option)); area.append(label);
       });
     } else {
       const input = document.createElement('input'); input.className = 'answer-input'; input.type = 'number'; input.inputMode = 'numeric'; input.placeholder = 'Type your answer'; input.setAttribute('aria-label', 'Your answer'); input.value = answers[current] ?? '';
-      input.addEventListener('input', () => { answers[current] = input.value; }); area.append(input);
+      input.addEventListener('input', () => { answers[current] = input.value; saveDraft(); }); area.append(input);
       const hint = document.createElement('span'); hint.className = 'answer-hint'; hint.textContent = 'Write the number only'; area.append(hint);
       input.addEventListener('keydown', (event) => { if (event.key === 'Enter') $('next-button').click(); });
     }
     $('next-button').innerHTML = current === TOTAL - 1 ? 'Finish my test <span>✓</span>' : 'Next question <span>→</span>';
+    saveDraft();
   }
 
   function finishTest() {
     const score = questions.reduce((sum, q, i) => sum + (String(answers[i] ?? '').trim().toLowerCase() === q.answer.toLowerCase() ? 1 : 0), 0);
+    const record = { id: currentSessionId || `test-${Date.now()}`, studentName: $('student-name').value.trim(), completedAt: new Date().toISOString(), score, total: TOTAL, questions: JSON.parse(JSON.stringify(questions)), answers: [...answers] };
+    savedRecords = [record, ...savedRecords.filter((item) => item.id !== record.id)].slice(0, 30);
+    try { localStorage.setItem(RECORDS_KEY, JSON.stringify(savedRecords)); localStorage.removeItem(DRAFT_KEY); savedDraft = null; }
+    catch { $('save-note').textContent = 'Your score could not be saved in this browser.'; }
+    currentSessionId = null;
+    showResult(score, record.studentName, false, record.completedAt);
+  }
+
+  function showResult(score, studentName, saved, completedAt) {
     $('score-value').textContent = `${score}/${TOTAL}`; $('score-percent').textContent = `${score * 10}%`;
     const title = score === TOTAL ? 'Amazing work!' : score >= 7 ? 'You did so well!' : score >= 4 ? 'Look at you go!' : 'You did it!';
-    $('result-title').textContent = title;
-    $('result-message').textContent = score >= 7 ? 'You really know your stuff. Keep that brilliant brain growing!' : 'Every bit of practice helps you grow. Give yourself a little cheer!';
+    $('result-title').textContent = saved ? 'Saved test record' : title;
+    $('result-message').textContent = saved ? `${studentName || 'Student'} · Completed ${new Date(completedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}` : score >= 7 ? 'You really know your stuff. Keep that brilliant brain growing!' : 'Every bit of practice helps you grow. Give yourself a little cheer!';
     $('result-medal').textContent = score >= 7 ? '★' : '✦';
     $('review-list').classList.add('hidden'); reviewed = false; $('review-button').textContent = 'Review my answers →'; showScreen('result');
+  }
+
+  function openSavedRecord(id) {
+    const record = savedRecords.find((item) => item.id === id);
+    if (!record) return;
+    questions = record.questions; answers = record.answers; currentSessionId = null;
+    showResult(record.score, record.studentName, true, record.completedAt);
   }
 
   function reviewAnswers() {
@@ -124,9 +197,13 @@
   }
 
   $('start-button').addEventListener('click', startTest);
+  $('resume-button').addEventListener('click', resumeTest);
   $('new-test-button').addEventListener('click', startTest);
-  $('exit-button').addEventListener('click', () => showScreen('welcome'));
-  $('next-button').addEventListener('click', () => { if (current < TOTAL - 1) { current++; renderQuestion(); window.scrollTo({ top: 0, behavior: 'smooth' }); } else finishTest(); });
+  $('student-name').addEventListener('input', () => { localStorage.setItem(NAME_KEY, $('student-name').value); if (currentSessionId) saveDraft(); renderSavedTests(); });
+  $('exit-button').addEventListener('click', () => { saveDraft(); showScreen('welcome'); });
+  $('next-button').addEventListener('click', () => { if (current < TOTAL - 1) { current++; saveDraft(); renderQuestion(); window.scrollTo({ top: 0, behavior: 'smooth' }); } else finishTest(); });
   $('review-button').addEventListener('click', () => reviewed ? ($('review-list').classList.add('hidden'), $('review-button').textContent = 'Review my answers →', reviewed = false) : reviewAnswers());
+  window.addEventListener('pagehide', saveDraft);
+  updateWelcome();
 })();
 
