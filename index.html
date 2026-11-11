@@ -24,7 +24,10 @@
           <span class="eyebrow"><span class="eyebrow-dot"></span> YOUR MATHS PRACTICE</span>
           <h1>Ready to make<br>maths <span class="title-highlight">your thing?</span></h1>
           <p class="welcome-description">Take a fun little test, show what you know, and see how you did. You’ve got this!</p>
+          <label class="student-field" for="student-name">Student name <span>(optional)</span><input id="student-name" type="text" maxlength="40" placeholder="Who’s taking the test?"></label>
           <div class="welcome-actions"><button class="button button-primary" id="start-button">Start my test <span aria-hidden="true">→</span></button><span class="time-note"><span aria-hidden="true">◷</span> About 10 minutes</span></div>
+          <button class="resume-button hidden" id="resume-button">↻ &nbsp; Resume your saved test</button>
+          <p class="save-note" id="save-note">Your progress and scores are saved on this device.</p>
           <div class="encouragement"><span class="tiny-star">✦</span> Every question is a chance to shine.</div>
         </div>
         <div class="hero-art" aria-hidden="true">
@@ -43,13 +46,17 @@
           <article class="topic-card topic-lilac"><div class="topic-icon shape-icon">△</div><div><h3>Shapes</h3><p>Plane and solid shapes, all around us.</p></div><span class="topic-arrow">↗</span></article>
           <article class="topic-card topic-mint"><div class="topic-icon">×</div><div><h3>Multiplication</h3><p>Tables, patterns, doubles & more.</p></div><span class="topic-arrow">↗</span></article>
         </div>
+        <section class="records-section hidden" id="records-section" aria-live="polite">
+          <div class="records-heading"><div><span class="eyebrow">SAVED ON THIS DEVICE</span><h2>Your recent tests</h2></div><span class="records-count" id="records-count"></span></div>
+          <div class="records-list" id="records-list"></div>
+        </section>
       </section>
       <footer class="page-footer"><span>Made for curious minds</span><span>✦ &nbsp; Take your time and do your best</span></footer>
 
       <section class="test-view hidden" id="test-view" aria-live="polite">
         <div class="test-topline"><button class="text-button" id="exit-button">← <span>Back</span></button><span class="test-label">YOUR MATHS TEST</span><span class="test-number" id="test-number">01 / 10</span></div>
         <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
-        <div class="test-layout"><div class="question-panel"><div class="question-meta"><span class="category-pill" id="category-pill">MULTIPLICATION</span><span id="question-progress">QUESTION 1 OF 10</span></div><h2 id="question-text"></h2><div class="question-visual hidden" id="question-visual"></div><div class="answer-area" id="answer-area"></div><div class="question-footer"><span class="gentle-reminder">Take your time — you can do it <span>✦</span></span><button class="button button-primary" id="next-button">Next question <span>→</span></button></div></div><aside class="test-aside"><div class="aside-sticker">✿</div><h3>One step<br>at a time.</h3><p>Read each question carefully. You can go back and change your answers before you finish.</p><div class="aside-doodle">1 <span>+</span> 1 <span>=</span> <b>2</b> <i>✦</i></div></aside></div>
+        <div class="test-layout"><div class="question-panel"><div class="question-meta"><span class="category-pill" id="category-pill">MULTIPLICATION</span><span id="question-progress">QUESTION 1 OF 10</span></div><h2 id="question-text"></h2><div class="question-visual hidden" id="question-visual"></div><div class="answer-area" id="answer-area"></div><div class="question-footer"><span class="gentle-reminder">Saved on this device <span>✓</span></span><button class="button button-primary" id="next-button">Next question <span>→</span></button></div></div><aside class="test-aside"><div class="aside-sticker">✿</div><h3>One step<br>at a time.</h3><p>Read each question carefully. You can go back and change your answers before you finish.</p><div class="aside-doodle">1 <span>+</span> 1 <span>=</span> <b>2</b> <i>✦</i></div></aside></div>
       </section>
 
       <section class="result-view hidden" id="result-view" aria-live="polite">
