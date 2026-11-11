@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f7f2">
+  <title>Maths Practice — Weekly Test</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Nunito:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="Maths practice home"><span class="brand-mark">＋</span><span>little<span class="brand-accent">steps</span></span></a>
+      <div class="top-note"><span class="sparkle">✦</span> A little practice goes a long way</div>
+      <div class="avatar" aria-hidden="true">✿</div>
+    </header>
+
+    <main>
+      <section class="welcome" id="welcome">
+        <div class="welcome-copy">
+          <span class="eyebrow"><span class="eyebrow-dot"></span> YOUR MATHS PRACTICE</span>
+          <h1>Ready to make<br>maths <span class="title-highlight">your thing?</span></h1>
+          <p class="welcome-description">Take a fun little test, show what you know, and see how you did. You’ve got this!</p>
+          <div class="welcome-actions"><button class="button button-primary" id="start-button">Start my test <span aria-hidden="true">→</span></button><span class="time-note"><span aria-hidden="true">◷</span> About 10 minutes</span></div>
+          <div class="encouragement"><span class="tiny-star">✦</span> Every question is a chance to shine.</div>
+        </div>
+        <div class="hero-art" aria-hidden="true">
+          <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+          <div class="hero-sun">✦</div>
+          <div class="hero-card card-main"><div class="card-top"><span class="mini-label">MATHS TIME</span><span class="card-dots">•••</span></div><div class="math-doodle">8 <span>×</span> 5 <span class="equals">=</span> <b>?</b></div><div class="answer-line"></div><div class="card-bottom"><span>YOU CAN DO IT!</span><span class="smile">☺</span></div></div>
+          <div class="floating-shape shape-circle"></div><div class="floating-shape shape-triangle"></div><div class="floating-shape shape-square"></div><div class="hero-spark spark-a">✳</div><div class="hero-spark spark-b">✦</div><div class="hero-spark spark-c">✧</div>
+          <div class="hero-sticker"><span>✌</span><small>LET’S<br>GO!</small></div>
+        </div>
+      </section>
+
+      <section class="topics-section">
+        <div class="section-heading"><div><span class="eyebrow">WHAT’S IN YOUR TEST?</span><h2>A little bit of everything</h2></div><span class="question-count"><span>10</span> questions</span></div>
+        <div class="topic-grid">
+          <article class="topic-card topic-peach"><div class="topic-icon">−</div><div><h3>Story sums</h3><p>Put your subtraction skills to work.</p></div><span class="topic-arrow">↗</span></article>
+          <article class="topic-card topic-lilac"><div class="topic-icon shape-icon">△</div><div><h3>Shapes</h3><p>Plane and solid shapes, all around us.</p></div><span class="topic-arrow">↗</span></article>
+          <article class="topic-card topic-mint"><div class="topic-icon">×</div><div><h3>Multiplication</h3><p>Tables, patterns, doubles & more.</p></div><span class="topic-arrow">↗</span></article>
+        </div>
+      </section>
+      <footer class="page-footer"><span>Made for curious minds</span><span>✦ &nbsp; Take your time and do your best</span></footer>
+
+      <section class="test-view hidden" id="test-view" aria-live="polite">
+        <div class="test-topline"><button class="text-button" id="exit-button">← <span>Back</span></button><span class="test-label">YOUR MATHS TEST</span><span class="test-number" id="test-number">01 / 10</span></div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+        <div class="test-layout"><div class="question-panel"><div class="question-meta"><span class="category-pill" id="category-pill">MULTIPLICATION</span><span id="question-progress">QUESTION 1 OF 10</span></div><h2 id="question-text"></h2><div class="question-visual hidden" id="question-visual"></div><div class="answer-area" id="answer-area"></div><div class="question-footer"><span class="gentle-reminder">Take your time — you can do it <span>✦</span></span><button class="button button-primary" id="next-button">Next question <span>→</span></button></div></div><aside class="test-aside"><div class="aside-sticker">✿</div><h3>One step<br>at a time.</h3><p>Read each question carefully. You can go back and change your answers before you finish.</p><div class="aside-doodle">1 <span>+</span> 1 <span>=</span> <b>2</b> <i>✦</i></div></aside></div>
+      </section>
+
+      <section class="result-view hidden" id="result-view" aria-live="polite">
+        <div class="result-confetti" aria-hidden="true">✦　✧　　 ✳　　✦　　 ✧　✦</div><span class="eyebrow">TEST COMPLETE</span><div class="result-medal" id="result-medal">✦</div><h1 id="result-title">You did it!</h1><p class="result-message" id="result-message"></p><div class="score-card"><div class="score-main"><strong id="score-value">0/10</strong><span>questions correct</span></div><div class="score-divider"></div><div class="score-percent"><strong id="score-percent">0%</strong><span>your score</span></div></div><div class="result-actions"><button class="button button-primary" id="review-button">Review my answers <span>→</span></button><button class="button button-secondary" id="new-test-button">Try a new test <span>↻</span></button></div><div class="review-list hidden" id="review-list"></div></section>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
+
