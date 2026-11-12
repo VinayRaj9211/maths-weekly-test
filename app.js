@@ -45,8 +45,8 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
 
   async function saveProfileToCloud(profile) {
     if (!signedInUser) return;
-    const { uid, name, age, grade, school, curriculum, photo } = profile;
-    await setDoc(doc(db, 'students', signedInUser.uid), { uid, email: signedInUser.email || '', name, age: Number(age), grade, school, curriculum, photo, updatedAt: serverTimestamp() }, { merge: true });
+    const { uid, name, age, grade, school, curriculum, medium, photo } = profile;
+    await setDoc(doc(db, 'students', signedInUser.uid), { uid, email: signedInUser.email || '', name, age: Number(age), grade, school, curriculum, medium: medium || 'English', photo, updatedAt: serverTimestamp() }, { merge: true });
   }
 
   async function loadCloudRecords() {
@@ -227,6 +227,7 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
       form.elements.grade.value = studentProfile.grade || '';
       form.elements.school.value = studentProfile.school || '';
       form.elements.curriculum.value = studentProfile.curriculum || 'School syllabus';
+      form.elements.medium.value = studentProfile.medium || 'English';
       if (studentProfile.photo) {
         $('photo-preview-image').src = studentProfile.photo;
         $('photo-preview').classList.remove('hidden');
@@ -281,6 +282,10 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
   let courseSelection = { subject: 'Mathematics', book: 'School test syllabus · Term 2', chapter: 'Subtraction story sums' };
 
   function schoolCurriculumKey(profile = studentProfile || {}) {
+    return [profile.school, profile.grade, profile.curriculum, profile.medium || 'English'].map((part) => String(part || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')).join('--');
+  }
+
+  function legacySchoolCurriculumKey(profile = studentProfile || {}) {
     return [profile.school, profile.grade, profile.curriculum].map((part) => String(part || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')).join('--');
   }
 
@@ -293,7 +298,8 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
     }
     $('course-library-note').textContent = 'Checking the course catalogue for your school and class…';
     try {
-      const snapshot = await getDoc(doc(db, 'schoolCurricula', schoolCurriculumKey(profile)));
+      let snapshot = await getDoc(doc(db, 'schoolCurricula', schoolCurriculumKey(profile)));
+      if (!snapshot.exists()) snapshot = await getDoc(doc(db, 'schoolCurricula', legacySchoolCurriculumKey(profile)));
       if (!snapshot.exists() || !Array.isArray(snapshot.data().subjects)) {
         courseSubjects = defaultCourseSubjects;
         $('course-library-note').textContent = `No confirmed course map is saved for ${profile.school} · ${profile.grade} yet. The school syllabus needs to be added before all subjects can be matched.`;
@@ -318,7 +324,7 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
   function renderCourseware() {
     const profile = studentProfile || {};
     $('course-match-title').textContent = profile.school ? `Course list for ${profile.school}` : 'Match a course to your school';
-    $('course-match-copy').textContent = profile.school ? `${profile.grade || 'Your class'} · ${profile.curriculum || 'School syllabus'}. School-specific chapters appear once the syllabus has been confirmed.` : 'Add your school and class to match lessons and tests to the right syllabus.';
+    $('course-match-copy').textContent = profile.school ? `${profile.grade || 'Your class'} · ${profile.curriculum || 'School syllabus'} · ${profile.medium || 'English'} medium. School-specific chapters appear once the syllabus has been confirmed.` : 'Add your school and class to match lessons and tests to the right syllabus.';
     $('course-subject-count').textContent = `${courseSubjects.length} subject areas`;
     const subjectNames = courseSubjects.map((subject) => subject.name);
     if (!subjectNames.includes(courseSelection.subject)) courseSelection.subject = subjectNames[0];
@@ -344,6 +350,8 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
     const worksheet = $('course-worksheet-preview'); worksheet.classList.add('hidden'); worksheet.innerHTML = '';
     $('course-video-link').href = chapter ? `https://www.youtube.com/results?search_query=${encodeURIComponent(chapter.videoQuery)}` : 'https://diksha.gov.in/';
     $('course-book-link').href = book?.officialUrl || officialBooksUrl;
+    const diksha = $('course-diksha-link');
+    if (diksha) diksha.href = 'https://diksha.gov.in/explore';
     $('course-worksheet-button').disabled = !chapter;
     $('course-chapter-test-button').disabled = !chapter || subject.name !== 'Mathematics';
     $('course-worksheet-button').textContent = chapter ? `Open ${subject.name} worksheet` : 'Worksheet not available yet';
@@ -455,7 +463,7 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
     event.preventDefault();
     if (!signedInUser) { $('auth-note').textContent = 'Please sign in with Google before creating a profile.'; return; }
     const form = event.currentTarget;
-    studentProfile = { uid: signedInUser?.uid || studentProfile?.uid || null, email: signedInUser?.email || studentProfile?.email || '', name: form.elements.name.value.trim(), age: form.elements.age.value, grade: form.elements.grade.value.trim(), school: form.elements.school.value.trim(), curriculum: form.elements.curriculum.value, photo: $('photo-preview').classList.contains('hidden') ? (signedInUser?.photoURL || '') : $('photo-preview-image').src };
+    studentProfile = { uid: signedInUser?.uid || studentProfile?.uid || null, email: signedInUser?.email || studentProfile?.email || '', name: form.elements.name.value.trim(), age: form.elements.age.value, grade: form.elements.grade.value.trim(), school: form.elements.school.value.trim(), curriculum: form.elements.curriculum.value, medium: form.elements.medium.value, photo: $('photo-preview').classList.contains('hidden') ? (signedInUser?.photoURL || '') : $('photo-preview-image').src };
     try { localStorage.setItem(PROFILE_KEY, JSON.stringify(studentProfile)); localStorage.setItem(activeNameKey, studentProfile.name); $('student-name').value = studentProfile.name; }
     catch { $('auth-note').textContent = 'Your profile picture may be too large to save. Choose a smaller image and try again.'; return; }
     $('setup-title').textContent = 'Your student profile';
