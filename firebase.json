@@ -1,0 +1,18 @@
+{
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "auth": {
+    "providers": {
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "Little Steps",
+        "supportEmail": "hansaaytech@gmail.com",
+        "authorizedRedirectUris": [
+          "https://vinayraj9211.github.io",
+          "https://riya-maths-learning-2026.firebaseapp.com/__/auth/handler"
+        ]
+      }
+    }
+  }
+}
+
