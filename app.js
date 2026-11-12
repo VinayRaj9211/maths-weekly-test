@@ -1,3 +1,21 @@
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.2.0/firebase-app.js';
+import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut } from 'https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js';
+import { getFirestore, doc, getDoc, setDoc, collection, addDoc, getDocs, query, orderBy, serverTimestamp } from 'https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js';
+
+const firebaseConfig = {
+  projectId: 'riya-maths-learning-2026',
+  appId: '1:616031513067:web:5f798f78d44edd0eda51ae',
+  storageBucket: 'riya-maths-learning-2026.firebasestorage.app',
+  apiKey: 'AIzaSyBNYjh35jjLPioKld4-5HdydbviCV9sEos',
+  authDomain: 'riya-maths-learning-2026.firebaseapp.com',
+  messagingSenderId: '616031513067'
+};
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
+const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: 'select_account' });
+
 (() => {
   const TOTAL = 10;
   const DRAFT_KEY = 'littleSteps.mathsTest.draft.v1';
@@ -14,11 +32,32 @@
   let savedRecords = readStored(RECORDS_KEY, []);
   let savedDraft = readStored(DRAFT_KEY, null);
   let studentProfile = readStored(PROFILE_KEY, null);
+  let signedInUser = null;
   $('student-name').value = localStorage.getItem(NAME_KEY) || '';
 
   function readStored(key, fallback) {
     try { const value = JSON.parse(localStorage.getItem(key)); return value ?? fallback; }
     catch { return fallback; }
+  }
+
+  async function saveProfileToCloud(profile) {
+    if (!signedInUser) return;
+    const { uid, name, age, grade, school, curriculum, photo } = profile;
+    await setDoc(doc(db, 'students', signedInUser.uid), { uid, email: signedInUser.email || '', name, age: Number(age), grade, school, curriculum, photo, updatedAt: serverTimestamp() }, { merge: true });
+  }
+
+  async function loadCloudRecords() {
+    if (!signedInUser) return;
+    try {
+      const result = await getDocs(query(collection(db, 'students', signedInUser.uid, 'testRecords'), orderBy('completedAt', 'desc')));
+      const cloudRecords = result.docs.map((item) => { const data = item.data(); return { ...data, completedAt: data.completedAt?.toDate?.().toISOString?.() || data.completedAt, id: item.id }; });
+      const localOnly = savedRecords.filter((record) => !cloudRecords.some((cloudRecord) => cloudRecord.id === record.id));
+      savedRecords = [...cloudRecords, ...localOnly].slice(0, 30);
+      localStorage.setItem(RECORDS_KEY, JSON.stringify(savedRecords));
+      renderSavedTests();
+    } catch (error) {
+      console.info('Cloud test history is unavailable until Firestore is enabled and secured.', error.code || error.message);
+    }
   }
 
   function saveDraft() {
@@ -139,10 +178,14 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  function startTest() {
+  function startTest(chapterTitle = '') {
     const name = $('student-name').value.trim();
     localStorage.setItem(NAME_KEY, name);
-    questions = buildTest(); answers = Array(TOTAL).fill(null); current = 0; reviewed = false; currentSessionId = `test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    if (/subtraction/i.test(chapterTitle)) questions = Array.from({ length: TOTAL }, subtraction);
+    else if (/shape/i.test(chapterTitle)) questions = Array.from({ length: TOTAL }, shapeQuestion);
+    else if (/multiplication/i.test(chapterTitle)) questions = Array.from({ length: TOTAL }, multiplication);
+    else questions = buildTest();
+    answers = Array(TOTAL).fill(null); current = 0; reviewed = false; currentSessionId = `test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     renderQuestion(); showScreen('test');
   }
 
@@ -150,6 +193,7 @@
     document.querySelectorAll('.dashboard-panel').forEach((panel) => panel.classList.toggle('hidden', panel.id !== id));
     document.querySelectorAll('.nav-item').forEach((button) => button.classList.toggle('active', button.dataset.panel === id));
     if (id === 'progress-panel') updateProgress();
+    if (id === 'courses-panel') renderCourseware();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -165,7 +209,7 @@
     $('progress-summary-copy').textContent = scores.length ? `Based on ${scores.length} completed maths test${scores.length === 1 ? '' : 's'}. Review answers and keep practising to see your progress.` : 'Complete a maths test to see your saved score and review your answers.';
     if (studentProfile) {
       $('dashboard-name').textContent = studentProfile.name.split(' ')[0];
-      $('dashboard-school').textContent = `${studentProfile.grade} · ${studentProfile.school}`;
+      $('dashboard-school').textContent = `${studentProfile.grade} · ${studentProfile.school} · ${studentProfile.curriculum || 'School syllabus'}`;
       $('header-name').textContent = studentProfile.name.split(' ')[0];
       $('header-avatar').textContent = studentProfile.photo ? '' : studentProfile.name.slice(0, 1).toUpperCase();
       $('header-avatar').style.backgroundImage = studentProfile.photo ? `url("${studentProfile.photo}")` : '';
@@ -179,6 +223,7 @@
       form.elements.age.value = studentProfile.age || '';
       form.elements.grade.value = studentProfile.grade || '';
       form.elements.school.value = studentProfile.school || '';
+      form.elements.curriculum.value = studentProfile.curriculum || 'School syllabus';
       if (studentProfile.photo) {
         $('photo-preview-image').src = studentProfile.photo;
         $('photo-preview').classList.remove('hidden');
@@ -186,6 +231,8 @@
       $('setup-title').textContent = 'Your student profile';
       form.querySelector('.setup-submit').innerHTML = 'Save changes <span>✓</span>';
     }
+    if (signedInUser && !form.elements.name.value) form.elements.name.value = signedInUser.displayName || '';
+    $('sign-out-button').classList.toggle('hidden', !signedInUser);
     $('profile-setup').classList.remove('hidden');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -202,6 +249,72 @@
     $('speaking-prompt').textContent = speakingPrompts[speakingIndex][0];
     $('speaking-tip').textContent = speakingPrompts[speakingIndex][1];
     $('speech-transcript').textContent = 'Your spoken words will appear here.';
+  }
+
+  const officialBooksUrl = 'https://epathshala.nic.in/wp-content/doc/book/btextbook/textbook.htm';
+  const courseSubjects = [
+    { name: 'Mathematics', books: [{ name: 'School test syllabus · Term 2', chapters: [
+      { title: 'Subtraction story sums', summary: 'Find what remains by subtracting the part taken away from the starting amount.', lessons: ['Underline the starting amount.', 'Find the amount that is taken away or used.', 'Subtract and write the answer with its unit.'], videoQuery: 'primary school subtraction word problems', worksheet: ['Aarav had 68 marbles and gave 24 away. How many remain?', 'There were 95 books. 37 were borrowed. How many are still there?'] },
+      { title: 'Plane and solid shapes', summary: 'Notice the sides, corners, faces and curved surfaces that make shapes different.', lessons: ['Name flat shapes by their sides and corners.', 'Name solid shapes by their faces and curved surfaces.', 'Connect solids to familiar objects around you.'], videoQuery: 'primary school plane solid shapes faces edges vertices', worksheet: ['Name a solid shape that looks like a ball.', 'How many equal sides does a square have?'] },
+      { title: 'Multiplication', summary: 'Multiplication counts equal groups quickly and can be shown as repeated addition.', lessons: ['Make equal groups to model a multiplication fact.', 'Practise the 2, 5 and 10 times tables.', 'Use doubles and multiplication by 10 or 100.'], videoQuery: 'primary school multiplication repeated addition tables 2 5 10', worksheet: ['Write 4 groups of 5 as repeated addition.', 'What is double 8?'] }
+    ] }] },
+    { name: 'English', books: [
+      { name: 'Grammar & language practice', chapters: [
+        { title: 'Build a clear sentence', summary: 'A sentence shares a complete idea and begins with a capital letter.', lessons: ['Choose who or what the sentence is about.', 'Add an action or useful detail.', 'Begin with a capital and finish with punctuation.'], videoQuery: 'primary English sentence building grammar', worksheet: ['Write one sentence about your favourite game.', 'Add the missing full stop: I like reading'] },
+        { title: 'Naming and action words', summary: 'Naming words tell who or what; action words tell what someone or something does.', lessons: ['Spot people, places, animals and things.', 'Find the action in a sentence.', 'Read the sentence again to check that it makes sense.'], videoQuery: 'primary English nouns verbs action words', worksheet: ['Circle the naming word: The dog runs.', 'Write one action word for a bird.'] }
+      ] },
+      { name: 'Literature · school reader', chapters: [] },
+      { name: 'Speaking course', chapters: speakingPrompts.map(([title, summary]) => ({ title, summary, lessons: [summary], videoQuery: 'beginner English speaking practice for children', worksheet: ['Say your answer aloud, then try once more using a complete sentence.'] })) }
+    ] },
+    { name: 'Hindi', books: [{ name: 'Hindi · school textbook', chapters: [] }, { name: 'Hindi grammar', chapters: [] }] },
+    { name: 'Environmental Studies / Science', books: [{ name: 'School textbook', chapters: [] }, { name: 'Science practice', chapters: [] }] },
+    { name: 'Social Studies', books: [{ name: 'School textbook', chapters: [] }] },
+    { name: 'Computer Studies', books: [{ name: 'School textbook', chapters: [] }] },
+    { name: 'General Knowledge', books: [{ name: 'School workbook', chapters: [] }] },
+    { name: 'Art & Craft', books: [{ name: 'Activities', chapters: [] }] },
+    { name: 'Physical Education', books: [{ name: 'Activities', chapters: [] }] }
+  ];
+  let courseSelection = { subject: 'Mathematics', book: 'School test syllabus · Term 2', chapter: 'Subtraction story sums' };
+
+  function fillSelect(select, values, chosen) {
+    select.innerHTML = '';
+    values.forEach((value) => { const option = document.createElement('option'); option.value = value; option.textContent = value; select.append(option); });
+    if (values.includes(chosen)) select.value = chosen;
+  }
+
+  function renderCourseware() {
+    const profile = studentProfile || {};
+    $('course-match-title').textContent = profile.school ? `Course list for ${profile.school}` : 'Match a course to your school';
+    $('course-match-copy').textContent = profile.school ? `${profile.grade || 'Your class'} · ${profile.curriculum || 'School syllabus'}. School-specific chapters appear once the syllabus has been confirmed.` : 'Add your school and class to match lessons and tests to the right syllabus.';
+    $('course-subject-count').textContent = `${courseSubjects.length} subject areas`;
+    const subjectNames = courseSubjects.map((subject) => subject.name);
+    if (!subjectNames.includes(courseSelection.subject)) courseSelection.subject = subjectNames[0];
+    fillSelect($('course-subject-select'), subjectNames, courseSelection.subject);
+    const subject = courseSubjects.find((item) => item.name === courseSelection.subject) || courseSubjects[0];
+    const bookNames = subject.books.map((book) => book.name);
+    if (!bookNames.includes(courseSelection.book)) courseSelection.book = bookNames[0];
+    fillSelect($('course-book-select'), bookNames, courseSelection.book);
+    const book = subject.books.find((item) => item.name === courseSelection.book) || subject.books[0];
+    const chapterNames = book.chapters.map((chapter) => chapter.title);
+    if (!chapterNames.includes(courseSelection.chapter)) courseSelection.chapter = chapterNames[0] || '';
+    fillSelect($('course-chapter-select'), chapterNames.length ? chapterNames : ['Waiting for school syllabus'], courseSelection.chapter);
+    $('course-chapter-select').disabled = !chapterNames.length;
+    const chapter = book.chapters.find((item) => item.title === courseSelection.chapter);
+    $('course-path-label').textContent = `${subject.name.toUpperCase()} · ${book.name.toUpperCase()}`;
+    $('course-source-tag').textContent = chapter ? (subject.name === 'Mathematics' ? 'From your supplied test syllabus' : 'Original practice lesson') : 'School source needed';
+    $('course-chapter-title').textContent = chapter?.title || `No ${subject.name} chapters matched yet`;
+    $('course-chapter-summary').textContent = chapter?.summary || `Add the ${profile.grade || 'student class'} ${subject.name} book or syllabus for ${profile.school || 'your school'} to load its chapter list. The official reference catalogue is available below.`;
+    const outline = $('course-lesson-outline'); outline.innerHTML = '';
+    (chapter?.lessons || []).forEach((lesson, index) => { const row = document.createElement('div'); row.className = 'lesson-step'; const number = document.createElement('b'); number.textContent = String(index + 1).padStart(2, '0'); const text = document.createElement('span'); text.textContent = lesson; row.append(number, text); outline.append(row); });
+    const chapterList = $('course-chapter-list'); chapterList.innerHTML = '';
+    chapterNames.forEach((title) => { const item = document.createElement('button'); item.type = 'button'; item.className = `chapter-list-item${title === courseSelection.chapter ? ' active' : ''}`; item.textContent = title; item.addEventListener('click', () => { courseSelection.chapter = title; renderCourseware(); }); chapterList.append(item); });
+    const worksheet = $('course-worksheet-preview'); worksheet.classList.add('hidden'); worksheet.innerHTML = '';
+    $('course-video-link').href = chapter ? `https://www.youtube.com/results?search_query=${encodeURIComponent(chapter.videoQuery)}` : 'https://diksha.gov.in/';
+    $('course-book-link').href = officialBooksUrl;
+    $('course-worksheet-button').disabled = !chapter;
+    $('course-chapter-test-button').disabled = !chapter || subject.name !== 'Mathematics';
+    $('course-worksheet-button').textContent = chapter ? `Open ${subject.name} worksheet` : 'Worksheet not available yet';
+    $('course-chapter-test-button').innerHTML = chapter && subject.name === 'Mathematics' ? 'Start chapter practice <span>→</span>' : 'Chapter test not available yet';
   }
 
   function resumeTest() {
@@ -243,6 +356,10 @@
     savedRecords = [record, ...savedRecords.filter((item) => item.id !== record.id)].slice(0, 30);
     try { localStorage.setItem(RECORDS_KEY, JSON.stringify(savedRecords)); localStorage.removeItem(DRAFT_KEY); savedDraft = null; }
     catch { $('save-note').textContent = 'Your score could not be saved in this browser.'; }
+    if (signedInUser) { const localRecordId = record.id; addDoc(collection(db, 'students', signedInUser.uid, 'testRecords'), { studentName: record.studentName, completedAt: new Date(record.completedAt), score: record.score, total: record.total, questions: record.questions, answers: record.answers })
+      .then((saved) => { record.id = saved.id; savedRecords = savedRecords.map((item) => item.id === localRecordId ? record : item); localStorage.setItem(RECORDS_KEY, JSON.stringify(savedRecords)); renderSavedTests(); $('save-note').textContent = 'Your test record is syncing securely across your devices.'; })
+      .catch(() => { $('save-note').textContent = 'This test is saved on this device. Cloud history will sync after database setup.'; });
+    }
     currentSessionId = null;
     showResult(score, record.studentName, false, record.completedAt);
   }
@@ -292,11 +409,10 @@
   $('dashboard-resume-button').addEventListener('click', resumeTest);
   $('profile-chip').addEventListener('click', openProfileSetup);
   $('edit-profile-button').addEventListener('click', openProfileSetup);
-  $('google-signin-button').addEventListener('click', () => { $('auth-note').textContent = 'Google account sign-in is not connected yet. This site needs its owner to configure Google OAuth and secure account storage.'; });
   $('profile-photo').addEventListener('change', () => {
     const file = $('profile-photo').files[0];
     if (!file) return;
-    if (file.size > 1200000) { $('auth-note').textContent = 'Please choose a picture smaller than 1.2 MB.'; $('profile-photo').value = ''; return; }
+    if (file.size > 500000) { $('auth-note').textContent = 'Please choose a picture smaller than 500 KB.'; $('profile-photo').value = ''; return; }
     const reader = new FileReader();
     reader.onload = () => { $('photo-preview-image').src = reader.result; $('photo-preview').classList.remove('hidden'); };
     reader.readAsDataURL(file);
@@ -305,11 +421,52 @@
   $('profile-form').addEventListener('submit', (event) => {
     event.preventDefault();
     const form = event.currentTarget;
-    studentProfile = { name: form.elements.name.value.trim(), age: form.elements.age.value, grade: form.elements.grade.value.trim(), school: form.elements.school.value.trim(), photo: $('photo-preview').classList.contains('hidden') ? '' : $('photo-preview-image').src };
+    studentProfile = { uid: signedInUser?.uid || studentProfile?.uid || null, email: signedInUser?.email || studentProfile?.email || '', name: form.elements.name.value.trim(), age: form.elements.age.value, grade: form.elements.grade.value.trim(), school: form.elements.school.value.trim(), curriculum: form.elements.curriculum.value, photo: $('photo-preview').classList.contains('hidden') ? (signedInUser?.photoURL || '') : $('photo-preview-image').src };
     try { localStorage.setItem(PROFILE_KEY, JSON.stringify(studentProfile)); localStorage.setItem(NAME_KEY, studentProfile.name); $('student-name').value = studentProfile.name; }
     catch { $('auth-note').textContent = 'Your profile picture may be too large to save. Choose a smaller image and try again.'; return; }
     $('setup-title').textContent = 'Your student profile';
+    if (signedInUser) saveProfileToCloud(studentProfile).then(() => { $('auth-note').textContent = 'Your profile is saved to your account.'; }).catch(() => { $('auth-note').textContent = 'Your profile is saved in this browser. Cross-device sync will start after database setup.'; });
     showScreen('welcome');
+  });
+  $('google-signin-button').replaceWith($('google-signin-button').cloneNode(true));
+  $('google-signin-button').addEventListener('click', async () => {
+    $('google-signin-button').disabled = true;
+    $('auth-note').textContent = 'Opening secure Google sign-in…';
+    try {
+      if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) await signInWithRedirect(auth, googleProvider);
+      else await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      const messages = {
+        'auth/unauthorized-domain': 'This site domain still needs to be added to Firebase Authentication’s authorized domains.',
+        'auth/popup-blocked': 'Your browser blocked the sign-in window. Allow pop-ups for this site and try again.',
+        'auth/popup-closed-by-user': 'Sign-in was closed before it finished. You can try again whenever you are ready.'
+      };
+      $('auth-note').textContent = messages[error.code] || 'Google sign-in could not finish. Please try again.';
+      $('google-signin-button').disabled = false;
+    }
+  });
+  onAuthStateChanged(auth, async (user) => {
+    signedInUser = user;
+    if (!user) return;
+    studentProfile = readStored(PROFILE_KEY, null);
+    if (studentProfile && studentProfile.uid && studentProfile.uid !== user.uid) studentProfile = null;
+    try {
+      const profileSnapshot = await getDoc(doc(db, 'students', user.uid));
+      if (profileSnapshot.exists()) {
+        studentProfile = { ...profileSnapshot.data(), photo: profileSnapshot.data().photo || user.photoURL || '' };
+        localStorage.setItem(PROFILE_KEY, JSON.stringify(studentProfile));
+        localStorage.setItem(NAME_KEY, studentProfile.name);
+        $('student-name').value = studentProfile.name;
+      } else if (studentProfile) await saveProfileToCloud({ ...studentProfile, uid: user.uid, email: user.email || '' });
+    } catch (error) { console.info('Cloud profile is unavailable until Firestore is enabled and secured.', error.code || error.message); }
+    $('profile-form').elements.name.value = studentProfile?.name || user.displayName || '';
+    $('header-name').textContent = studentProfile?.name?.split(' ')[0] || user.displayName?.split(' ')[0] || 'Your profile';
+    $('header-avatar').textContent = studentProfile?.photo || user.photoURL ? '' : (user.displayName || user.email || 'S').slice(0, 1).toUpperCase();
+    $('header-avatar').style.backgroundImage = studentProfile?.photo ? `url("${studentProfile.photo}")` : user.photoURL ? `url("${user.photoURL}")` : '';
+    $('auth-note').textContent = `Signed in as ${user.email}. Your student profile will be saved in this browser until cloud records are connected.`;
+    loadCloudRecords();
+    if (studentProfile) { updateProgress(); showScreen('welcome'); }
+    else openProfileSetup();
   });
   $('hear-prompt-button').addEventListener('click', () => {
     if (!('speechSynthesis' in window)) { $('speech-note').textContent = 'Prompt audio is not available in this browser.'; return; }
@@ -325,6 +482,24 @@
     recognition.start();
   });
   $('next-speaking-button').addEventListener('click', () => { speakingIndex = (speakingIndex + 1) % speakingPrompts.length; renderSpeakingPrompt(); });
+  $('course-subject-select').addEventListener('change', () => { courseSelection.subject = $('course-subject-select').value; courseSelection.book = ''; courseSelection.chapter = ''; renderCourseware(); });
+  $('course-book-select').addEventListener('change', () => { courseSelection.book = $('course-book-select').value; courseSelection.chapter = ''; renderCourseware(); });
+  $('course-chapter-select').addEventListener('change', () => { courseSelection.chapter = $('course-chapter-select').value; renderCourseware(); });
+  $('course-edit-profile').addEventListener('click', openProfileSetup);
+  $('course-library-refresh').addEventListener('click', () => { $('course-library-note').textContent = 'The private school-course database is waiting for Firestore setup and approved school chapter sources.'; });
+  $('course-chapter-test-button').addEventListener('click', () => startTest(courseSelection.chapter));
+  $('course-worksheet-button').addEventListener('click', () => {
+    const subject = courseSubjects.find((item) => item.name === courseSelection.subject);
+    const book = subject?.books.find((item) => item.name === courseSelection.book);
+    const chapter = book?.chapters.find((item) => item.title === courseSelection.chapter);
+    if (!chapter) return;
+    const preview = $('course-worksheet-preview'); preview.innerHTML = '';
+    const title = document.createElement('h3'); title.textContent = `${chapter.title} · Practice sheet`;
+    const list = document.createElement('ol'); chapter.worksheet.forEach((prompt) => { const item = document.createElement('li'); item.textContent = prompt; list.append(item); });
+    preview.append(title, list); preview.classList.remove('hidden');
+    $('course-library-note').textContent = 'Worksheet opened below the lesson.';
+  });
+  $('sign-out-button').addEventListener('click', async () => { try { await signOut(auth); $('profile-setup').classList.add('hidden'); } catch { $('auth-note').textContent = 'Sign-out could not finish. Please try again.'; } });
   renderSpeakingPrompt();
   window.addEventListener('pagehide', saveDraft);
   updateWelcome();
