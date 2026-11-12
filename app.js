@@ -3,6 +3,7 @@
   const DRAFT_KEY = 'littleSteps.mathsTest.draft.v1';
   const RECORDS_KEY = 'littleSteps.mathsTest.records.v1';
   const NAME_KEY = 'littleSteps.mathsTest.studentName.v1';
+  const PROFILE_KEY = 'littleSteps.studentProfile.v1';
   const $ = (id) => document.getElementById(id);
   const screens = { welcome: $('welcome'), topics: document.querySelector('.topics-section'), footer: document.querySelector('.page-footer'), test: $('test-view'), result: $('result-view') };
   let questions = [];
@@ -12,6 +13,7 @@
   let currentSessionId = null;
   let savedRecords = readStored(RECORDS_KEY, []);
   let savedDraft = readStored(DRAFT_KEY, null);
+  let studentProfile = readStored(PROFILE_KEY, null);
   $('student-name').value = localStorage.getItem(NAME_KEY) || '';
 
   function readStored(key, fallback) {
@@ -40,13 +42,28 @@
       const review = document.createElement('button'); review.className = 'record-review'; review.textContent = 'View answers'; review.type = 'button'; review.addEventListener('click', () => openSavedRecord(record.id));
       details.append(score, date); card.append(details, review); list.append(card);
     });
+    const dashboardList = $('dashboard-records');
+    if (dashboardList) {
+      dashboardList.innerHTML = '';
+      savedRecords.slice(0, 10).forEach((record) => {
+        const card = document.createElement('article'); card.className = 'record-card';
+        const details = document.createElement('div'); details.className = 'record-details';
+        const score = document.createElement('strong'); score.textContent = `${record.score}/${record.total} correct · ${Math.round(record.score / record.total * 100)}%`;
+        const date = document.createElement('span'); date.textContent = new Date(record.completedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+        const review = document.createElement('button'); review.className = 'record-review'; review.textContent = 'View answers'; review.type = 'button'; review.addEventListener('click', () => openSavedRecord(record.id));
+        details.append(score, date); card.append(details, review); dashboardList.append(card);
+      });
+      $('dashboard-record-count').textContent = savedRecords.length ? `${savedRecords.length} saved` : '';
+    }
   }
 
   function updateWelcome() {
     savedDraft = readStored(DRAFT_KEY, null);
     $('resume-button').classList.toggle('hidden', !savedDraft || !Array.isArray(savedDraft.questions) || !savedDraft.questions.length);
     if (savedDraft) $('save-note').textContent = 'Your unfinished test is saved on this device.';
+    $('dashboard-resume-button').classList.toggle('hidden', !savedDraft || !Array.isArray(savedDraft.questions) || !savedDraft.questions.length);
     renderSavedTests();
+    updateProgress();
   }
 
   const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
@@ -107,11 +124,17 @@
   }
 
   function showScreen(name) {
+    const dashboard = $('student-dashboard');
+    const onDashboard = name === 'welcome' && !!studentProfile;
+    dashboard.classList.toggle('hidden', !onDashboard);
     screens.welcome.classList.toggle('hidden', name !== 'welcome');
-    screens.topics.classList.toggle('hidden', name !== 'welcome');
-    screens.footer.classList.toggle('hidden', name !== 'welcome');
+    screens.welcome.classList.toggle('hidden', name !== 'welcome' || onDashboard);
+    screens.topics.classList.toggle('hidden', name !== 'welcome' || onDashboard);
+    screens.footer.classList.toggle('hidden', name !== 'welcome' || onDashboard);
     screens.test.classList.toggle('hidden', name !== 'test');
     screens.result.classList.toggle('hidden', name !== 'result');
+    $('profile-setup').classList.add('hidden');
+    if (onDashboard) showDashboardPanel('overview-panel');
     if (name === 'welcome') updateWelcome();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -121,6 +144,64 @@
     localStorage.setItem(NAME_KEY, name);
     questions = buildTest(); answers = Array(TOTAL).fill(null); current = 0; reviewed = false; currentSessionId = `test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     renderQuestion(); showScreen('test');
+  }
+
+  function showDashboardPanel(id) {
+    document.querySelectorAll('.dashboard-panel').forEach((panel) => panel.classList.toggle('hidden', panel.id !== id));
+    document.querySelectorAll('.nav-item').forEach((button) => button.classList.toggle('active', button.dataset.panel === id));
+    if (id === 'progress-panel') updateProgress();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function updateProgress() {
+    const scores = savedRecords.map((record) => Math.round(record.score / record.total * 100));
+    const average = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+    $('stat-tests').textContent = String(scores.length);
+    $('stat-average').textContent = `${average}%`;
+    $('stat-capability').textContent = `${average}%`;
+    $('progress-ring-value').textContent = `${average}%`;
+    $('progress-ring').style.setProperty('--progress', `${average * 3.6}deg`);
+    $('progress-summary-title').textContent = scores.length ? (average >= 80 ? 'Your practice is paying off!' : average >= 50 ? 'You are building your skills.' : 'Keep practising, one step at a time.') : 'Your first test is a great place to begin.';
+    $('progress-summary-copy').textContent = scores.length ? `Based on ${scores.length} completed maths test${scores.length === 1 ? '' : 's'}. Review answers and keep practising to see your progress.` : 'Complete a maths test to see your saved score and review your answers.';
+    if (studentProfile) {
+      $('dashboard-name').textContent = studentProfile.name.split(' ')[0];
+      $('dashboard-school').textContent = `${studentProfile.grade} · ${studentProfile.school}`;
+      $('header-name').textContent = studentProfile.name.split(' ')[0];
+      $('header-avatar').textContent = studentProfile.photo ? '' : studentProfile.name.slice(0, 1).toUpperCase();
+      $('header-avatar').style.backgroundImage = studentProfile.photo ? `url("${studentProfile.photo}")` : '';
+    }
+  }
+
+  function openProfileSetup() {
+    const form = $('profile-form');
+    if (studentProfile) {
+      form.elements.name.value = studentProfile.name || '';
+      form.elements.age.value = studentProfile.age || '';
+      form.elements.grade.value = studentProfile.grade || '';
+      form.elements.school.value = studentProfile.school || '';
+      if (studentProfile.photo) {
+        $('photo-preview-image').src = studentProfile.photo;
+        $('photo-preview').classList.remove('hidden');
+      }
+      $('setup-title').textContent = 'Your student profile';
+      form.querySelector('.setup-submit').innerHTML = 'Save changes <span>✓</span>';
+    }
+    $('profile-setup').classList.remove('hidden');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  const speakingPrompts = [
+    ['Hello! What is your name?', 'Try saying: “Hello, my name is …”'],
+    ['What do you like to do after school?', 'Try saying: “After school, I like to …”'],
+    ['What is your favourite subject?', 'Try saying: “My favourite subject is … because …”'],
+    ['Can you tell me about your school?', 'Try saying: “My school is … and I enjoy …”']
+  ];
+  let speakingIndex = 0;
+  function renderSpeakingPrompt() {
+    $('speaking-progress').textContent = `PROMPT ${speakingIndex + 1} OF ${speakingPrompts.length}`;
+    $('speaking-prompt').textContent = speakingPrompts[speakingIndex][0];
+    $('speaking-tip').textContent = speakingPrompts[speakingIndex][1];
+    $('speech-transcript').textContent = 'Your spoken words will appear here.';
   }
 
   function resumeTest() {
@@ -199,11 +280,55 @@
   $('start-button').addEventListener('click', startTest);
   $('resume-button').addEventListener('click', resumeTest);
   $('new-test-button').addEventListener('click', startTest);
+  $('result-home-button').addEventListener('click', () => showScreen('welcome'));
   $('student-name').addEventListener('input', () => { localStorage.setItem(NAME_KEY, $('student-name').value); if (currentSessionId) saveDraft(); renderSavedTests(); });
   $('exit-button').addEventListener('click', () => { saveDraft(); showScreen('welcome'); });
   $('next-button').addEventListener('click', () => { if (current < TOTAL - 1) { current++; saveDraft(); renderQuestion(); window.scrollTo({ top: 0, behavior: 'smooth' }); } else finishTest(); });
   $('review-button').addEventListener('click', () => reviewed ? ($('review-list').classList.add('hidden'), $('review-button').textContent = 'Review my answers →', reviewed = false) : reviewAnswers());
+  document.querySelectorAll('.nav-item').forEach((button) => button.addEventListener('click', () => showDashboardPanel(button.dataset.panel)));
+  document.querySelectorAll('[data-go]').forEach((button) => button.addEventListener('click', () => showDashboardPanel(button.dataset.go)));
+  $('dashboard-test-button').addEventListener('click', startTest);
+  $('course-test-button').addEventListener('click', startTest);
+  $('dashboard-resume-button').addEventListener('click', resumeTest);
+  $('profile-chip').addEventListener('click', openProfileSetup);
+  $('edit-profile-button').addEventListener('click', openProfileSetup);
+  $('google-signin-button').addEventListener('click', () => { $('auth-note').textContent = 'Google account sign-in is not connected yet. This site needs its owner to configure Google OAuth and secure account storage.'; });
+  $('profile-photo').addEventListener('change', () => {
+    const file = $('profile-photo').files[0];
+    if (!file) return;
+    if (file.size > 1200000) { $('auth-note').textContent = 'Please choose a picture smaller than 1.2 MB.'; $('profile-photo').value = ''; return; }
+    const reader = new FileReader();
+    reader.onload = () => { $('photo-preview-image').src = reader.result; $('photo-preview').classList.remove('hidden'); };
+    reader.readAsDataURL(file);
+  });
+  $('remove-photo-button').addEventListener('click', () => { $('profile-photo').value = ''; $('photo-preview').classList.add('hidden'); if (studentProfile) studentProfile.photo = ''; });
+  $('profile-form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    studentProfile = { name: form.elements.name.value.trim(), age: form.elements.age.value, grade: form.elements.grade.value.trim(), school: form.elements.school.value.trim(), photo: $('photo-preview').classList.contains('hidden') ? '' : $('photo-preview-image').src };
+    try { localStorage.setItem(PROFILE_KEY, JSON.stringify(studentProfile)); localStorage.setItem(NAME_KEY, studentProfile.name); $('student-name').value = studentProfile.name; }
+    catch { $('auth-note').textContent = 'Your profile picture may be too large to save. Choose a smaller image and try again.'; return; }
+    $('setup-title').textContent = 'Your student profile';
+    showScreen('welcome');
+  });
+  $('hear-prompt-button').addEventListener('click', () => {
+    if (!('speechSynthesis' in window)) { $('speech-note').textContent = 'Prompt audio is not available in this browser.'; return; }
+    const utterance = new SpeechSynthesisUtterance($('speaking-prompt').textContent); utterance.lang = 'en-IN'; window.speechSynthesis.speak(utterance);
+  });
+  $('listen-button').addEventListener('click', () => {
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Recognition) { $('speech-note').textContent = 'Voice input is not supported in this browser. You can still practise aloud and use Hear prompt.'; return; }
+    const recognition = new Recognition(); recognition.lang = 'en-IN'; recognition.interimResults = false;
+    $('speech-note').textContent = 'Listening… say your answer now.';
+    recognition.onresult = (event) => { $('speech-transcript').textContent = event.results[0][0].transcript; $('speech-note').textContent = 'Nice practice! Try the phrase again or move to the next prompt.'; };
+    recognition.onerror = () => { $('speech-note').textContent = 'The microphone could not start. Check browser microphone permission and try again.'; };
+    recognition.start();
+  });
+  $('next-speaking-button').addEventListener('click', () => { speakingIndex = (speakingIndex + 1) % speakingPrompts.length; renderSpeakingPrompt(); });
+  renderSpeakingPrompt();
   window.addEventListener('pagehide', saveDraft);
   updateWelcome();
+  if (studentProfile && studentProfile.name) { updateProgress(); showScreen('welcome'); }
+  else { $('profile-setup').classList.remove('hidden'); }
 })();
 
