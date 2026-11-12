@@ -277,6 +277,7 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
     { name: 'Art & Craft', books: [{ name: 'Activities', chapters: [] }] },
     { name: 'Physical Education', books: [{ name: 'Activities', chapters: [] }] }
   ];
+  const defaultCourseSubjects = courseSubjects;
   let courseSelection = { subject: 'Mathematics', book: 'School test syllabus · Term 2', chapter: 'Subtraction story sums' };
 
   function schoolCurriculumKey(profile = studentProfile || {}) {
@@ -294,7 +295,7 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
     try {
       const snapshot = await getDoc(doc(db, 'schoolCurricula', schoolCurriculumKey(profile)));
       if (!snapshot.exists() || !Array.isArray(snapshot.data().subjects)) {
-        courseSubjects = courseSubjects.filter((subject) => ['Mathematics', 'English'].includes(subject.name));
+        courseSubjects = defaultCourseSubjects;
         $('course-library-note').textContent = `No confirmed course map is saved for ${profile.school} · ${profile.grade} yet. The school syllabus needs to be added before all subjects can be matched.`;
       } else {
         const data = snapshot.data();
