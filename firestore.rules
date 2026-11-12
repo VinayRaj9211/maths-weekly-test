@@ -1,0 +1,53 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function ownsStudent(studentId) { return signedIn() && request.auth.uid == studentId; }
+    function validStudent(data, studentId) {
+      return data.keys().hasOnly(['uid', 'email', 'name', 'age', 'grade', 'school', 'curriculum', 'photo', 'updatedAt'])
+        && data.uid == studentId
+        && data.email is string && data.email == request.auth.token.email
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 50
+        && data.age is int && data.age >= 4 && data.age <= 20
+        && data.grade is string && data.grade.size() >= 1 && data.grade.size() <= 30
+        && data.school is string && data.school.size() >= 1 && data.school.size() <= 80
+        && data.curriculum is string && data.curriculum.size() <= 40
+        && data.photo is string && data.photo.size() <= 700000
+        && data.updatedAt is timestamp;
+    }
+    function validTest(data) {
+      return data.keys().hasOnly(['studentName', 'completedAt', 'score', 'total', 'questions', 'answers'])
+        && data.studentName is string && data.studentName.size() <= 50
+        && data.completedAt is timestamp
+        && data.score is int && data.score >= 0 && data.score <= 10
+        && data.total == 10
+        && data.questions is list && data.questions.size() == 10
+        && data.answers is list && data.answers.size() == 10;
+    }
+
+    match /students/{studentId} {
+      allow read: if ownsStudent(studentId);
+      allow create, update: if ownsStudent(studentId) && validStudent(request.resource.data, studentId);
+      allow delete: if false;
+
+      match /testRecords/{recordId} {
+        allow read: if ownsStudent(studentId);
+        allow create: if ownsStudent(studentId) && validTest(request.resource.data);
+        allow update, delete: if false;
+      }
+    }
+
+    match /courseCatalog/{courseId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /schoolCurricula/{schoolKey} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /{document=**} { allow read, write: if false; }
+  }
+}
+
