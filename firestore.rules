@@ -4,7 +4,7 @@ service cloud.firestore {
     function signedIn() { return request.auth != null; }
     function ownsStudent(studentId) { return signedIn() && request.auth.uid == studentId; }
     function validStudent(data, studentId) {
-      return data.keys().hasOnly(['uid', 'email', 'name', 'age', 'grade', 'school', 'curriculum', 'photo', 'updatedAt'])
+      return data.keys().hasOnly(['uid', 'email', 'name', 'age', 'grade', 'school', 'curriculum', 'medium', 'photo', 'updatedAt'])
         && data.uid == studentId
         && data.email is string && data.email == request.auth.token.email
         && data.name is string && data.name.size() >= 1 && data.name.size() <= 50
@@ -12,6 +12,7 @@ service cloud.firestore {
         && data.grade is string && data.grade.size() >= 1 && data.grade.size() <= 30
         && data.school is string && data.school.size() >= 1 && data.school.size() <= 80
         && data.curriculum is string && data.curriculum.size() <= 40
+        && data.medium is string && data.medium.size() >= 1 && data.medium.size() <= 30
         && data.photo is string && data.photo.size() <= 700000
         && data.updatedAt is timestamp;
     }
