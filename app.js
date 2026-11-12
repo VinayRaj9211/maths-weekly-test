@@ -13,6 +13,7 @@ const firebaseConfig = {
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
+const COURSE_ADMIN_EMAIL = 'hansaaytech@gmail.com';
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
@@ -181,10 +182,15 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  function startTest(chapterTitle = '') {
+  function startTest(chapterTitle = '', courseQuestionBank = null) {
     const name = $('student-name').value.trim();
     localStorage.setItem(activeNameKey, name);
-    if (/subtraction/i.test(chapterTitle)) questions = Array.from({ length: TOTAL }, subtraction);
+    if (Array.isArray(courseQuestionBank) && courseQuestionBank.length) {
+      questions = Array.from({ length: TOTAL }, () => {
+        const source = pick(courseQuestionBank);
+        return { category: String(source.category || chapterTitle || 'COURSE PRACTICE').toUpperCase(), prompt: String(source.prompt || ''), answer: String(source.answer ?? ''), explain: String(source.explain || 'Review the lesson and try another question.'), ...(Array.isArray(source.options) && source.options.length ? { options: source.options.map(String) } : {}) };
+      });
+    } else if (/subtraction/i.test(chapterTitle)) questions = Array.from({ length: TOTAL }, subtraction);
     else if (/shape/i.test(chapterTitle)) questions = Array.from({ length: TOTAL }, shapeQuestion);
     else if (/multiplication/i.test(chapterTitle)) questions = Array.from({ length: TOTAL }, multiplication);
     else questions = buildTest();
@@ -326,6 +332,8 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
     $('course-match-title').textContent = profile.school ? `Course list for ${profile.school}` : 'Match a course to your school';
     $('course-match-copy').textContent = profile.school ? `${profile.grade || 'Your class'} · ${profile.curriculum || 'School syllabus'} · ${profile.medium || 'English'} medium. School-specific chapters appear once the syllabus has been confirmed.` : 'Add your school and class to match lessons and tests to the right syllabus.';
     $('course-subject-count').textContent = `${courseSubjects.length} subject areas`;
+    const courseAdmin = $('course-map-admin');
+    if (courseAdmin) courseAdmin.classList.toggle('hidden', (signedInUser?.email || '').toLowerCase() !== COURSE_ADMIN_EMAIL);
     const subjectNames = courseSubjects.map((subject) => subject.name);
     if (!subjectNames.includes(courseSelection.subject)) courseSelection.subject = subjectNames[0];
     fillSelect($('course-subject-select'), subjectNames, courseSelection.subject);
@@ -348,14 +356,15 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
     const chapterList = $('course-chapter-list'); chapterList.innerHTML = '';
     chapterNames.forEach((title) => { const item = document.createElement('button'); item.type = 'button'; item.className = `chapter-list-item${title === courseSelection.chapter ? ' active' : ''}`; item.textContent = title; item.addEventListener('click', () => { courseSelection.chapter = title; renderCourseware(); }); chapterList.append(item); });
     const worksheet = $('course-worksheet-preview'); worksheet.classList.add('hidden'); worksheet.innerHTML = '';
-    $('course-video-link').href = chapter ? `https://www.youtube.com/results?search_query=${encodeURIComponent(chapter.videoQuery)}` : 'https://diksha.gov.in/';
-    $('course-book-link').href = book?.officialUrl || officialBooksUrl;
+    $('course-video-link').href = chapter?.videoUrl || (chapter ? `https://www.youtube.com/results?search_query=${encodeURIComponent(chapter.videoQuery || chapter.title)}` : 'https://diksha.gov.in/');
+    $('course-book-link').href = chapter?.bookUrl || book?.officialUrl || officialBooksUrl;
     const diksha = $('course-diksha-link');
-    if (diksha) diksha.href = 'https://diksha.gov.in/explore';
+    if (diksha) diksha.href = chapter?.dikshaUrl || 'https://diksha.gov.in/explore';
     $('course-worksheet-button').disabled = !chapter;
-    $('course-chapter-test-button').disabled = !chapter || subject.name !== 'Mathematics';
+    const hasChapterQuestions = Array.isArray(chapter?.questions) && chapter.questions.length > 0;
+    $('course-chapter-test-button').disabled = !chapter || (subject.name !== 'Mathematics' && !hasChapterQuestions);
     $('course-worksheet-button').textContent = chapter ? `Open ${subject.name} worksheet` : 'Worksheet not available yet';
-    $('course-chapter-test-button').innerHTML = chapter && subject.name === 'Mathematics' ? 'Start chapter practice <span>→</span>' : 'Chapter test not available yet';
+    $('course-chapter-test-button').innerHTML = chapter && (subject.name === 'Mathematics' || hasChapterQuestions) ? 'Start chapter practice <span>→</span>' : 'Chapter test not available yet';
   }
 
   function resumeTest() {
@@ -382,7 +391,7 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
         label.append(input, document.createTextNode(option)); area.append(label);
       });
     } else {
-      const input = document.createElement('input'); input.className = 'answer-input'; input.type = 'number'; input.inputMode = 'numeric'; input.placeholder = 'Type your answer'; input.setAttribute('aria-label', 'Your answer'); input.value = answers[current] ?? '';
+      const input = document.createElement('input'); input.className = 'answer-input'; input.type = q.numeric || /^-?\d+(\.\d+)?$/.test(q.answer) ? 'number' : 'text'; input.inputMode = input.type === 'number' ? 'numeric' : 'text'; input.placeholder = 'Type your answer'; input.setAttribute('aria-label', 'Your answer'); input.value = answers[current] ?? '';
       input.addEventListener('input', () => { answers[current] = input.value; saveDraft(); }); area.append(input);
       const hint = document.createElement('span'); hint.className = 'answer-hint'; hint.textContent = 'Write the number only'; area.append(hint);
       input.addEventListener('keydown', (event) => { if (event.key === 'Enter') $('next-button').click(); });
@@ -553,7 +562,27 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
   $('course-chapter-select').addEventListener('change', () => { courseSelection.chapter = $('course-chapter-select').value; renderCourseware(); });
   $('course-edit-profile').addEventListener('click', openProfileSetup);
   $('course-library-refresh').addEventListener('click', loadSchoolCourseware);
-  $('course-chapter-test-button').addEventListener('click', () => startTest(courseSelection.chapter));
+  $('course-map-save-button').addEventListener('click', async () => {
+    if ((signedInUser?.email || '').toLowerCase() !== COURSE_ADMIN_EMAIL) return;
+    const status = $('course-map-admin-status');
+    try {
+      const map = JSON.parse($('course-map-json').value);
+      if (!map || typeof map !== 'object' || !Array.isArray(map.subjects) || !map.school || !map.grade || !map.curriculum || !map.medium) throw new Error('Include school, grade, curriculum, medium, and a subjects list.');
+      if (JSON.stringify(map).length > 450000) throw new Error('This course map is too large. Keep it under 450 KB.');
+      const profile = { school: map.school, grade: map.grade, curriculum: map.curriculum, medium: map.medium };
+      await setDoc(doc(db, 'schoolCurricula', schoolCurriculumKey(profile)), { school: map.school, grade: map.grade, curriculum: map.curriculum, medium: map.medium, sourceName: String(map.sourceName || 'Teacher-approved course map').slice(0, 100), subjects: map.subjects, updatedAt: serverTimestamp() });
+      status.textContent = 'Course map saved. Matching students can now open its subjects and chapters.';
+      await loadSchoolCourseware();
+    } catch (error) {
+      status.textContent = error instanceof SyntaxError ? 'That file is not valid JSON. Check its brackets and commas, then try again.' : error.message || 'The course map could not be saved.';
+    }
+  });
+  $('course-chapter-test-button').addEventListener('click', () => {
+    const subject = courseSubjects.find((item) => item.name === courseSelection.subject);
+    const book = subject?.books.find((item) => item.name === courseSelection.book);
+    const chapter = book?.chapters.find((item) => item.title === courseSelection.chapter);
+    startTest(courseSelection.chapter, chapter?.questions || null);
+  });
   $('course-worksheet-button').addEventListener('click', () => {
     const subject = courseSubjects.find((item) => item.name === courseSelection.subject);
     const book = subject?.books.find((item) => item.name === courseSelection.book);
