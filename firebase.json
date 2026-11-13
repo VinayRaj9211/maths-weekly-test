@@ -4,6 +4,7 @@
   },
   "auth": {
     "providers": {
+      "emailPassword": true,
       "googleSignIn": {
         "oAuthBrandDisplayName": "Little Steps",
         "supportEmail": "hansaaytech@gmail.com",
