@@ -1,5 +1,5 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.2.0/firebase-app.js';
-import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut } from 'https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js';
+import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut, browserLocalPersistence, setPersistence, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink } from 'https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js';
 import { getFirestore, doc, getDoc, setDoc, collection, addDoc, getDocs, query, orderBy, serverTimestamp } from 'https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js';
 
 const firebaseConfig = {
@@ -12,6 +12,7 @@ const firebaseConfig = {
 };
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
+const authPersistenceReady = setPersistence(auth, browserLocalPersistence).catch((error) => console.info('Using Firebase Auth default persistence.', error.code || error.message));
 const db = getFirestore(firebaseApp);
 const COURSE_ADMIN_EMAIL = 'hansaaytech@gmail.com';
 const googleProvider = new GoogleAuthProvider();
@@ -37,6 +38,7 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
   let savedDraft = readStored(activeDraftKey, null);
   let studentProfile = readStored(PROFILE_KEY, null);
   let signedInUser = null;
+  let authMode = 'signin';
   $('student-name').value = localStorage.getItem(activeNameKey) || '';
 
   function readStored(key, fallback) {
@@ -168,6 +170,14 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
 
   function showScreen(name) {
     const dashboard = $('student-dashboard');
+    if (!signedInUser) {
+      $('auth-page').classList.remove('hidden');
+      dashboard.classList.add('hidden');
+      screens.welcome.classList.add('hidden'); screens.topics.classList.add('hidden'); screens.footer.classList.add('hidden'); screens.test.classList.add('hidden'); screens.result.classList.add('hidden');
+      $('profile-setup').classList.add('hidden');
+      return;
+    }
+    $('auth-page').classList.add('hidden');
     const onDashboard = name === 'welcome' && !!studentProfile;
     dashboard.classList.toggle('hidden', !onDashboard);
     screens.welcome.classList.toggle('hidden', name !== 'welcome');
@@ -480,11 +490,52 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
     loadSchoolCourseware();
     showScreen('welcome');
   });
-  $('google-signin-button').replaceWith($('google-signin-button').cloneNode(true));
+  $('auth-mode-signin').addEventListener('click', () => setAuthMode('signin'));
+  $('auth-mode-signup').addEventListener('click', () => setAuthMode('signup'));
+  function setAuthMode(mode) {
+    authMode = mode;
+    $('auth-mode-signin').classList.toggle('active', mode === 'signin');
+    $('auth-mode-signup').classList.toggle('active', mode === 'signup');
+    $('email-auth-submit').textContent = mode === 'signup' ? 'Create account with email link' : 'Send me a sign-in link';
+    $('auth-page-title').textContent = mode === 'signup' ? 'Create your learning account' : 'Welcome back';
+    $('auth-page-copy').textContent = mode === 'signup' ? 'We’ll email you a secure one-time link to verify your address and sign in.' : 'Sign in to continue your learning and saved progress.';
+  }
+  $('auth-email-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const email = $('auth-email').value.trim();
+    const button = $('email-auth-submit'); button.disabled = true;
+    $('email-auth-note').textContent = 'Sending your secure sign-in link…';
+    try {
+      await authPersistenceReady;
+      await sendSignInLinkToEmail(auth, email, { url: 'https://vinayraj9211.github.io/maths-weekly-test/', handleCodeInApp: true });
+      localStorage.setItem('littleSteps.emailForSignIn', email);
+      $('email-auth-note').textContent = `A one-time sign-in link was sent to ${email}. Open it on this device to continue.`;
+      $('complete-email-row').classList.remove('hidden');
+      $('complete-email').value = email;
+    } catch (error) {
+      $('email-auth-note').textContent = error.code === 'auth/operation-not-allowed' ? 'Email link sign-in is not enabled in Firebase Authentication yet.' : error.code === 'auth/unauthorized-continue-uri' || error.code === 'auth/unauthorized-domain' ? 'This website domain needs to be authorized in Firebase Authentication.' : 'We could not send the sign-in link. Check the email address and try again.';
+    } finally { button.disabled = false; }
+  });
+  async function completeEmailLinkSignIn() {
+    if (!isSignInWithEmailLink(auth, window.location.href)) return;
+    const email = $('complete-email').value.trim() || localStorage.getItem('littleSteps.emailForSignIn') || '';
+    if (!email) { $('complete-email-row').classList.remove('hidden'); $('email-auth-note').textContent = 'Enter the same email address that received this link to finish signing in.'; $('complete-email').focus(); return; }
+    $('email-auth-note').textContent = 'Verifying your email…';
+    try {
+      await authPersistenceReady;
+      await signInWithEmailLink(auth, email, window.location.href);
+      localStorage.removeItem('littleSteps.emailForSignIn');
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } catch {
+      $('email-auth-note').textContent = 'This sign-in link is invalid or expired. Request a new one and open it on this device.';
+    }
+  }
+  $('complete-email-button').addEventListener('click', completeEmailLinkSignIn);
   $('google-signin-button').addEventListener('click', async () => {
     $('google-signin-button').disabled = true;
-    $('auth-note').textContent = 'Opening secure Google sign-in…';
+    $('email-auth-note').textContent = 'Opening secure Google sign-in…';
     try {
+      await authPersistenceReady;
       if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) await signInWithRedirect(auth, googleProvider);
       else await signInWithPopup(auth, googleProvider);
     } catch (error) {
@@ -493,11 +544,12 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
         'auth/popup-blocked': 'Your browser blocked the sign-in window. Allow pop-ups for this site and try again.',
         'auth/popup-closed-by-user': 'Sign-in was closed before it finished. You can try again whenever you are ready.'
       };
-      $('auth-note').textContent = messages[error.code] || 'Google sign-in could not finish. Please try again.';
+      $('email-auth-note').textContent = messages[error.code] || 'Google sign-in could not finish. Please try again.';
       $('google-signin-button').disabled = false;
     }
   });
   onAuthStateChanged(auth, async (user) => {
+    await authPersistenceReady;
     const previousUser = signedInUser;
     signedInUser = user;
     if (!user) {
@@ -510,10 +562,12 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
         savedDraft = readStored(DRAFT_KEY, null);
         $('student-name').value = localStorage.getItem(NAME_KEY) || '';
         updateProgress();
-        showScreen('welcome');
+        showScreen('auth');
       }
+      else showScreen('auth');
       return;
     }
+    $('auth-page').classList.add('hidden');
     activeRecordsKey = `${RECORDS_KEY}.${user.uid}`;
     activeDraftKey = `${DRAFT_KEY}.${user.uid}`;
     activeNameKey = `${NAME_KEY}.${user.uid}`;
@@ -596,9 +650,15 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
   });
   $('sign-out-button').addEventListener('click', async () => { try { await signOut(auth); $('profile-setup').classList.add('hidden'); } catch { $('auth-note').textContent = 'Sign-out could not finish. Please try again.'; } });
   renderSpeakingPrompt();
+  setAuthMode('signin');
+  if (isSignInWithEmailLink(auth, window.location.href)) {
+    $('complete-email-row').classList.remove('hidden');
+    $('complete-email').value = localStorage.getItem('littleSteps.emailForSignIn') || '';
+    if ($('complete-email').value) completeEmailLinkSignIn();
+    else $('email-auth-note').textContent = 'Enter the same email address that received this link to finish signing in.';
+  }
   window.addEventListener('pagehide', saveDraft);
   updateWelcome();
-  if (studentProfile && studentProfile.name && (!studentProfile.uid || auth.currentUser)) { updateProgress(); showScreen('welcome'); }
-  else { $('profile-setup').classList.remove('hidden'); }
+  showScreen('auth');
 })();
 
